@@ -5,6 +5,12 @@ import { kafka } from './client.js'
 const consumer = kafka.consumer({ groupId })
 const { HEARTBEAT } = consumer.events
 consumer.on(HEARTBEAT, e => console.log(`heartbeat at ${e.timestamp}`))
+process.on('SIGINT', async () => {
+    console.log('\nDisconnecting :: Consumer');
+    await consumer.disconnect();
+    console.log('Disconnected :: Consumer');
+    process.exit(0);
+});
 const connectConsumer = async () => {
     try {
         console.log("Connecting :: Consumer")

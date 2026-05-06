@@ -6,24 +6,22 @@ const producer = kafka.producer({
     allowAutoTopicCreation: false,
     transactionTimeout: 30000
 })
-const msg = {
-    name: "User-2",
-    id: 2,
-    location: 'NORTH'
-}
-const keyLocation = 'location-update'
-const keyCustomer = 'customer-update'
-const msgCustomer = {
-    userName: "customer-2",
-    isDelivered: false
-
-}
+const directions = ['NORTH', 'SOUTH', 'EAST', 'WEST'];
+const buildMessage = (id) => ({
+    name: `User-${id}`,
+    id,
+    location: directions[Math.floor(Math.random() * directions.length)]
+});
 const connectProducer = async () => {
     try {
         console.log("Connecting :: Producer")
         await producer.connect()
         console.log('Connected :: Producer')
-        await sendMessages(topic, keyLocation, msg)
+        for (let i = 1; i <= 5; i++) {
+            const msg = buildMessage(i);
+            await sendMessages(topic, String(msg.id), msg);
+            await new Promise((r) => setTimeout(r, 1000));
+        }
     } catch (error) {
         console.error(error.message)
     }

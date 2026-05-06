@@ -14,9 +14,9 @@ const connectAdmin = async () => {
     }
     finally {
         if (admin !== null) {
-            console.log("Disconneting :: Admin ")
+            console.log("Disconnecting :: Admin ")
             await admin.disconnect()
-            console.log("Disconneted :: Admin ")
+            console.log("Disconnected :: Admin ")
         }
 
     }
@@ -32,6 +32,7 @@ const createTopic = async () => {
     } catch (error) {
         console.log('Error :: Topic creation')
         console.error(error.message);
+        throw error;
     }
 }
 connectAdmin()
