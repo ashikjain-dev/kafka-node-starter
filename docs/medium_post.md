@@ -43,6 +43,9 @@ To read the diagram:
 - A **consumer group** is a set of consumers that share the same `groupId`.
 - Inside a consumer group, partitions are assigned to consumers so each partition is processed by only one consumer.
 - Different consumer groups read the same topic independently.
+- In **Consumer Group 1**, Consumer 1 and Consumer 2 split the partitions between them. They share the work, so they do not read duplicate messages from the same partition.
+- In **Consumer Group 2**, there is only one consumer, so it reads all assigned partitions for that group.
+- Consumer Group 2 does not depend on Consumer Group 1. Each group keeps its own offsets, so one group does not block or override the other group's progress.
 - **Offsets** (bookmarks) track how far each consumer group has read in every partition.
 
 In this tutorial, `groupId = "test-code-1"` and the producer uses `String(msg.id)` as the key, so events can land on different partitions.
