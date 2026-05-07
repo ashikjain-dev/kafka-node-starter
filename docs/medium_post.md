@@ -1,8 +1,9 @@
 # A Beginner's Guide to Apache Kafka with Node.js and Docker Compose
 
-If you're a Node.js developer curious about Apache Kafka, this guide is for you. We'll build a small event-driven pipeline that simulates real-time location updates — a producer publishes messages like `{ name: "User-2", location: "NORTH" }` every couple of seconds, and a consumer reads them as they arrive.
+If you're a Node.js developer curious about Apache Kafka, this guide is for you. We'll build a small event-driven pipeline that simulates real-time location updates — a producer publishes messages like `{"name":"User-1","id":1,"location":"SOUTH"}` every couple of seconds, and a consumer reads them as they arrive.
 
 By the end of this post, you'll have:
+
 - A local single-node Kafka cluster running in **KRaft mode** (no ZooKeeper) via Docker Compose
 - A Kafka UI dashboard for inspecting topics and messages
 - A working Node.js producer and consumer using `kafkajs`
@@ -15,6 +16,7 @@ Let's get started!
 ## Prerequisites
 
 Before we begin, make sure you have the following installed on your machine:
+
 - **Node.js** (v14 or higher)
 - **Docker** and **Docker Compose**
 
@@ -23,6 +25,7 @@ Before we begin, make sure you have the following installed on your machine:
 ## Kafka Crash Course
 
 If you are totally new to Kafka, the easiest way to understand it is like a massive **Radio Broadcasting System**:
+
 - **Broker**: The radio station itself (a single Kafka server). It is the central hub that receives messages from producers and stores them safely for consumers to read.
 - **Cluster**: A group of brokers working together. Just like a national broadcasting network uses multiple stations to cover the whole country, a Kafka cluster is a network of brokers sharing the workload.
 - **Producer**: The DJ (your application) broadcasting a show.
@@ -33,11 +36,13 @@ If you are totally new to Kafka, the easiest way to understand it is like a mass
 - **Offset**: A sequential ID number assigned to every message as it enters a partition. Think of it as a bookmark; it allows consumers to remember exactly which messages they have already read so they can resume from where they left off if they restart.
 
 ---
+
 ## Kafka Architecture (Producer → Broker → Consumer Group)
 
-![Kafka architecture diagram](Kafka_architecture.drawio.png)
+![Kafka architecture diagram](./Kafka_architecture.drawio.png)
 
 To read the diagram:
+
 - A `topic` is split into **partitions**. The broker stores messages per partition.
 - A **producer** writes events to a topic. The **message key** decides which partition each event goes to.
 - A **consumer group** is a set of consumers that share the same `groupId`.
@@ -63,11 +68,18 @@ Gone are those days! We'll use **KRaft** (Kafka Raft) mode, which builds that "b
 ### Docker Compose Basics
 
 If you are new to Docker Compose, here is a quick rundown of the basic keywords we will use:
-- **`image`**: The pre-built software package we are pulling from Docker Hub (e.g., `apache/kafka:latest`).
-- **`container_name`**: A custom, human-readable name for our running container.
-- **`ports`**: Maps the network ports from inside the container to your local machine so your app can access them.
-- **`volumes`**: Ensures our Kafka data is saved persistently on our hard drive so we don't lose messages if the container restarts.
-- **`depends_on`**: Controls the startup order of your containers. We use this to tell Docker that the `kafka-ui` container shouldn't boot up until the `kafka` broker has successfully started.
+
+- `**services`**: Lists the services Docker Compose should run as containers (here: Kafka and Kafka UI).
+- `**image**`: The pre-built software package we are pulling from Docker Hub (e.g., `apache/kafka:latest`).
+- `**container_name**`: A custom, human-readable name for our running container.
+- `**ports**`: Maps the network ports from inside the container to your local machine so your NodeJS app can access them.
+- `**volumes**`: Ensures our Kafka data is saved persistently on our hard drive so we don't lose messages if the container restarts.
+- `**networks**`: Docker Compose creates a default network and places all services (service containers) on it, so `kafka` and `kafka-ui` can discover and talk to each other by service name.
+- `**depends_on**`: Controls the startup order of services. We use this to tell Docker that `kafka-ui` should start only after `kafka` has successfully started.
+
+Here is a quick visual of how our Docker Compose setup works:
+
+![Docker Compose architecture](./docker_architecture.drawio.png)
 
 ### Understanding the KRaft Configuration
 
@@ -84,6 +96,7 @@ If you've used Kafka before, the environment variables might look completely new
 ### Understanding the Kafka UI Configuration
 
 For the `kafka-ui` service, the environment variables are much simpler:
+
 - `KAFKA_CLUSTERS_0_NAME: local`: This assigns a human-readable name to our cluster inside the Kafka UI dashboard.
 - `KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9094`: This tells the UI how to connect to our Kafka broker. Because both containers run on the same Docker network, the UI connects to the `kafka` container using its internal Docker hostname (`kafka`) and the internal port (`9094`), which we previously configured as our `INTERNAL` listener.
 
@@ -131,11 +144,13 @@ This configuration spins up a single-node Kafka broker available at `localhost:9
 Before starting the cluster, make sure Docker Desktop (or the Docker daemon/engine) is running so the CLI can communicate with Docker properly.
 
 Start your cluster by running:
+
 ```bash
 docker-compose up -d
 ```
 
 **What happens when you run this command?**
+
 1. **Pulls Images:** Docker first checks if you have the required images (`apache/kafka:latest` and `provectuslabs/kafka-ui:latest`) locally. If not, it pulls them from Docker Hub.
 2. **Creates the Network:** Docker Compose automatically sets up a default internal network so the `kafka` and `kafka-ui` containers can communicate securely.
 3. **Creates the Volume:** It provisions the `kafka_data` volume on your host machine to ensure your Kafka data persists across restarts.
@@ -151,6 +166,7 @@ Initialize a new Node.js project and install `kafkajs`:
 npm init -y
 npm install kafkajs
 ```
+
 *(Make sure to add `"type": "module"` in your `package.json` to use ES6 imports).*
 
 **Why `kafkajs`?**
@@ -163,23 +179,27 @@ Because Kafka isn't built in JavaScript, our Node.js app can't talk to it direct
 Let's break our application into small, logical files.
 
 ### `client.js`
+
 First, we instantiate the Kafka client. This client will be shared across our admin, producer, and consumer scripts.
 
 ```javascript
 import { Kafka } from "kafkajs";
 
-export const kafka = new Kafka({
+const kafka = new Kafka({
     clientId: 'my-app',
     brokers: ['localhost:9092']
 });
+export {kafka}
 ```
 
 Let's quickly break down this configuration object:
-- **`clientId`**: A logical identifier for your application. This is incredibly useful for debugging and tracking metrics in Kafka logs, as it tells the broker exactly which application is making requests.
-- **`brokers`**: This tells our Node.js app where to find Kafka. When the app runs, it tries to connect to this broker address. Since we already exposed port `9092` to our local machine in the `compose.yaml` file, we simply point it to `localhost:9092`.
+
+- `**clientId**`: A logical identifier for your application. This is incredibly useful for debugging and tracking metrics in Kafka logs, as it tells the broker exactly which application is making requests.
+- `**brokers**`: This tells our Node.js app where to find Kafka. When the app runs, it tries to connect to this broker address. Since we already exposed port `9092` to our local machine in the `compose.yaml` file, we simply point it to `localhost:9092`.
 
 ### `constant.js`
-It's a good practice to keep your topic names and group IDs in a central place.
+
+Create a file named `constant.js` to keep your topic names and group IDs in one central place.
 
 ```javascript
 const topic = "test1"
@@ -188,9 +208,9 @@ export { topic, groupId }
 ```
 
 Why do we need these?
-- **`topic`**: This is the category or channel name where our messages will be published. The producer sends messages to `test1`, and the consumer listens to `test1` to read them.
-- **`groupId`**: This acts as an identifier for a group of consumers. Kafka uses this to manage consumer load balancing—if you run multiple consumers with the same `groupId`, Kafka ensures each message is only read by one consumer in the group, preventing duplicates.
 
+- `**topic**`: This is the category or channel name where our messages will be published. The producer sends messages to `test1`, and the consumer listens to `test1` to read them.
+- `**groupId**`: This acts as an identifier for a group of consumers. Kafka uses this to manage consumer load balancing—if you run multiple consumers with the same `groupId`, Kafka ensures each message is only read by one consumer in the group, preventing duplicates.
 
 ---
 
@@ -241,16 +261,17 @@ connectAdmin()
 ```
 
 Let's break down the important functions used here:
-- **`kafka.admin()`**: This creates an Admin client instance. The Admin client is specifically used to manage the Kafka cluster infrastructure, such as creating topics, deleting topics, and checking cluster metadata.
-- **`admin.connect()`**: This asynchronously connects the Admin client to the Kafka broker. It returns a Promise that resolves when the connection is successfully established.
-- **`admin.createTopics({ topics: [{ topic, numPartitions: 2 }] })`**: This function tells the broker to create new topics. We pass it an array of configuration objects with two key properties:
+
+- `**kafka.admin()**`: This creates an Admin client instance. The Admin client is specifically used to manage the Kafka cluster infrastructure, such as creating topics, deleting topics, and checking cluster metadata.
+- `**admin.connect()**`: This asynchronously connects the Admin client to the Kafka broker. It returns a Promise that resolves when the connection is successfully established.
+- `**admin.createTopics({ topics: [{ topic, numPartitions: 2 }] })**`: This function tells the broker to create new topics. We pass it an array of configuration objects with two key properties:
   - `topic`: The name of the topic to create (which we imported from `constant.js` as `"test1"`).
   - `numPartitions: 2`: Partitions allow Kafka to split the topic's data for scalability and parallel processing. Here, we specify that our topic should be divided into 2 partitions.
   It returns a Promise that resolves to `true` if the topics were successfully created (or if they already exist), and throws an error if it fails.
-- **`admin.listTopics()`**: This fetches a list of all topic names currently existing in your Kafka cluster. It returns a Promise that resolves to an array of strings (e.g., `['test1']`).
-- **Error handling in `createTopic`**: In production code you'd typically rethrow from `createTopic` so a failed topic creation surfaces as a non-zero exit. We swallow errors here to keep the tutorial output readable.
+- `**admin.listTopics()**`: This fetches a list of all topic names currently existing in your Kafka cluster. It returns a Promise that resolves to an array of strings (e.g., `['test1']`).
 
 Run this file once to create the topic:
+
 ```bash
 node admin.js
 ```
@@ -318,9 +339,11 @@ const sendMessages = async (topic, key, msg) => {
 
 connectProducer()
 ```
+
 Let's break down the important producer configurations and functions:
-- **`kafka.producer({ allowAutoTopicCreation: false })`**: Creates the producer instance. Setting `allowAutoTopicCreation` to `false` is a best practice; it ensures the producer throws an error if it tries to send a message to a topic that doesn't exist yet, rather than silently creating it with default settings.
-- **`producer.send({ topic, messages: [...] })`**: Sends an array of messages to the specified topic. The Promise resolves only *after* the broker acknowledges the write, so it's safe to disconnect the producer as soon as the loop finishes.
+
+- `**kafka.producer({ allowAutoTopicCreation: false })**`: Creates the producer instance. Setting `allowAutoTopicCreation` to `false` is a best practice; it ensures the producer throws an error if it tries to send a message to a topic that doesn't exist yet, rather than silently creating it with default settings.
+- `**producer.send({ topic, messages: [...] })**`: Sends an array of messages to the specified topic. The Promise resolves only *after* the broker acknowledges the write, so it's safe to disconnect the producer as soon as the loop finishes.
   - `key`: Messages with the same key are guaranteed to be sent to the same partition, which preserves their order. We use `String(msg.id)` so different users' updates can land on different partitions (matching our topic's two partitions).
   - `value`: The actual payload of the message. Kafka expects strings or buffers, so we convert our JavaScript object into a string using `JSON.stringify()`.
   - `compression`: We use `CompressionTypes.GZIP` to compress the message payload, which is highly recommended for production environments to save bandwidth and storage. On the consumer side, `kafkajs` decompresses automatically — no extra configuration needed.
@@ -369,11 +392,13 @@ const connectConsumer = async () => {
 
 connectConsumer()
 ```
+
 Let's break down the important consumer configurations and functions:
-- **`kafka.consumer({ groupId })`**: Creates a consumer instance and assigns it to a consumer group. The broker uses this `groupId` to save the "offsets" (bookmarks) for this specific group, ensuring no messages are skipped or read twice even if the consumer crashes and restarts.
-- **`consumer.subscribe({ topics: [topic], fromBeginning: true })`**: Tells the consumer which topics to listen to. By setting `fromBeginning: true`, the consumer will read all available messages in the topic from the very start if it hasn't read from this topic before (i.e., if it doesn't have a saved offset bookmark).
-- **`consumer.run({ eachMessage: async ({ message }) => ... })`**: Starts a continuous loop that fetches messages from the broker. For every message received, it triggers the `eachMessage` callback, providing us with the message object where we can access the `key` and `value` (which we convert back to a string using `.toString()`).
-- **`SIGINT` handler**: Pressing Ctrl+C triggers a graceful disconnect so Kafka can commit final offsets and remove the consumer from the group cleanly — mirroring how we disconnect the admin and producer clients.
+
+- `**kafka.consumer({ groupId })**`: Creates a consumer instance and assigns it to a consumer group. The broker uses this `groupId` to save the "offsets" (bookmarks) for this specific group, ensuring no messages are skipped or read twice even if the consumer crashes and restarts.
+- `**consumer.subscribe({ topics: [topic], fromBeginning: true })**`: Tells the consumer which topics to listen to. By setting `fromBeginning: true`, the consumer will read all available messages in the topic from the very start if it hasn't read from this topic before (i.e., if it doesn't have a saved offset bookmark).
+- `**consumer.run({ eachMessage: async ({ message }) => ... })**`: Starts a continuous loop that fetches messages from the broker. For every message received, it triggers the `eachMessage` callback, providing us with the message object where we can access the `key` and `value` (which we convert back to a string using `.toString()`).
+- `**SIGINT` handler**: Pressing Ctrl+C triggers a graceful disconnect so Kafka can commit final offsets and remove the consumer from the group cleanly — mirroring how we disconnect the admin and producer clients.
 
 ---
 
@@ -382,15 +407,18 @@ Let's break down the important consumer configurations and functions:
 Now that everything is set up, let's see it in action!
 
 1. **Start the Consumer**: Open a terminal and run the following command to connect and wait for incoming messages:
+
 ```bash
 node consumer.js
 ```
 
-2. **Run the Producer**: Open a second terminal and run the following command to connect, send five simulated location updates (about 1 second apart), and disconnect:
+1. **Run the Producer**: Open a second terminal and run the following command to connect, send five simulated location updates (about 1 second apart), and disconnect:
+
 ```bash
 node producer.js
 ```
-3. **Watch the Magic**: Look back at your Consumer terminal. You should see each message printed out as it arrives.
+
+1. **Watch the Magic**: Look back at your Consumer terminal. You should see each message printed out as it arrives.
 
 *(Note: Because we set `fromBeginning: true` in our consumer, it actually doesn't matter which script you run first! If you run the producer first, Kafka buffers the messages, and the consumer will fetch them the moment it boots up.)*
 
@@ -419,4 +447,4 @@ I used these references while writing this guide:
 - **kafkajs documentation** – [https://kafka.js.org](https://kafka.js.org)
 - **YouTube tutorial I followed** – [Apache Kafka Crash Course | What is Kafka?](https://www.youtube.com/watch?v=ZJJHm_bd9Zo)
 
-Happy coding! 
+Happy reading and coding! 
